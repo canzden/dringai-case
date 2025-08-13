@@ -21,7 +21,7 @@ exclude = '''
 [tool.isort]
 profile = "black"
 line_length = 100
-py_version = 313
+py_version = 312 # turns out the 3.13 is not supported currently
 known_first_party = ["src"]
 skip = [".venv", "venv", "build", "dist", "data", "logs", "__pycache__"]
 combine_as_imports = true
