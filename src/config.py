@@ -35,5 +35,20 @@ class DeepgramConfig(BaseConfig):
         self.base_url = base_url
 
 
+class OpenAIConfig(BaseConfig):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+    ):
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.model = model or os.getenv("OPENAI_MODEL")
+
+        if not self.api_key:
+            raise ValueError("OpenAI API key is not set")
+        if not self.model:
+            raise ValueError("OpenAI model is not set")
+
+
 def load_config():
-    return DeepgramConfig()
+    return DeepgramConfig(), OpenAIConfig

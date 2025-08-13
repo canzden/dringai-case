@@ -5,6 +5,7 @@ from pynput import keyboard
 from pynput.keyboard import Key
 
 from audio import AudioManager
+from config import load_config
 from stt import DeepgramSTT
 
 
@@ -114,7 +115,9 @@ class HotkeyTap:
 def run():
     keys = HotkeyTap(cooldown_s=0.8)
     audio = AudioManager(channels=1)
-    tts = DeepgramSTT()
+
+    stt_config, llm_config = load_config()
+    tts = DeepgramSTT(stt_config)
     shutdown = threading.Event()
 
     print("press SPACE to init conversation")

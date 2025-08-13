@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
-from config import load_config
+from config import DeepgramConfig, load_config
 
 
 class STTProvider(ABC):
@@ -28,8 +28,8 @@ class DeepgramSTT(STTProvider):
 
     DEFAULT_TIMEOUT_SECONDS = 30
 
-    def __init__(self):
-        self.config = load_config()
+    def __init__(self, config: DeepgramConfig):
+        self.config = config
 
     @property
     def _headers(self):
