@@ -50,5 +50,21 @@ class OpenAIConfig(BaseConfig):
             raise ValueError("OpenAI model is not set")
 
 
+class ElevenLabsConfig(BaseConfig):
+    def __init__(
+        self, api_key: str | None = None, model: str | None = None, voice_id: str | None = None
+    ):
+        self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
+        self.model = model or os.getenv("ELEVENLABS_MODEL")
+        self.voice_id = voice_id or os.getenv("ELEVENLABS_VOICE_ID")
+
+        if not self.api_key:
+            raise ValueError("ElevenLabs API key is not set")
+        if not self.model:
+            raise ValueError("ElevenLabs model is not set")
+        if not self.voice_id:
+            raise ValueError("ElevenLabs voice id is not set")
+
+
 def load_config():
-    return DeepgramConfig(), OpenAIConfig()
+    return DeepgramConfig(), OpenAIConfig(), ElevenLabsConfig()
