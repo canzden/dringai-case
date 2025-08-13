@@ -1,0 +1,6 @@
+-r requirements-test.in
+black
+isort
+pylint
+pre-commit
+pip-tools
