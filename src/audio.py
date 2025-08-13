@@ -205,6 +205,16 @@ class AudioManager:
         )
 
     @staticmethod
+    def pcm16_to_wav(pcm: bytes, samplerate: int, channels: int = 1) -> bytes:
+        bio = BytesIO()
+        with wave.open(bio, "wb") as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(2)  # int16
+            wf.setframerate(samplerate)
+            wf.writeframes(pcm)
+        return bio.getvalue()
+
+    @staticmethod
     def _to_wav(arr_int16: np.ndarray, sr: int, ch: int) -> bytes:
         bio = BytesIO()
         with wave.open(bio, "wb") as wf:
