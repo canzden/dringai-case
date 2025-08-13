@@ -51,4 +51,4 @@ class OpenAIConfig(BaseConfig):
 
 
 def load_config():
-    return DeepgramConfig(), OpenAIConfig
+    return DeepgramConfig(), OpenAIConfig()
