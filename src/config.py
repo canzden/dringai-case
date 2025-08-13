@@ -33,3 +33,7 @@ class DeepgramConfig(BaseConfig):
         self.smart_format = smart_format
         self.punctuate = punctuate
         self.base_url = base_url
+
+
+def load_config():
+    return DeepgramConfig()
