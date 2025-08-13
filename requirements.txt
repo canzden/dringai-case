@@ -70,6 +70,8 @@ multidict==6.6.4
     #   yarl
 mypy-extensions==1.1.0
     # via typing-inspect
+numpy==2.3.2
+    # via -r requirements.in
 openai==1.99.9
     # via -r requirements.in
 packaging==25.0

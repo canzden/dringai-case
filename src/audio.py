@@ -1,106 +1,225 @@
+from io import BytesIO
+import queue
 import threading
-import time
+from typing import Generator, Optional
+import wave
 
-from pynput import keyboard
-from pynput.keyboard import Key
+import numpy as np
+import sounddevice as sd
 
 
-class HotkeyTap:
-    """
-    HotkeyTap provides hotkey-based tap detection with cooldown and exit functionality.
-    """
+class AudioManager:
+    _DEVICES = sd.query_devices()
+    _DEF_IN, _DEF_OUT = sd.default.device
 
-    DEFAULT_COOLDOWN_SECONDS: float = 1.5
-    TRIGGER_KEY: Key = Key.space
-    EXIT_KEY: Key = Key.esc
+    DEFAULT_INPUT_INDEX: int = (
+        _DEF_IN
+        if isinstance(_DEF_IN, int) and _DEF_IN >= 0
+        else next((i for i, d in enumerate(_DEVICES) if d.get("max_input_channels", 0) > 0), 0)
+    )
+    DEFAULT_OUTPUT_INDEX: int = (
+        _DEF_OUT
+        if isinstance(_DEF_OUT, int) and _DEF_OUT >= 0
+        else next((i for i, d in enumerate(_DEVICES) if d.get("max_output_channels", 0) > 0), 0)
+    )
+    try:
+        _SR_IN = int(sd.query_devices(DEFAULT_INPUT_INDEX, "input")["default_samplerate"])
+    except Exception:
+        _SR_IN = None
+    try:
+        _SR_OUT = int(sd.query_devices(DEFAULT_OUTPUT_INDEX, "output")["default_samplerate"])
+    except Exception:
+        _SR_OUT = None
+    DEFAULT_SAMPLERATE: int = (
+        min(_SR_IN, _SR_OUT) if (_SR_IN and _SR_OUT) else (_SR_IN or _SR_OUT or 16_000)
+    )
 
     def __init__(
         self,
-        trigger_key: Key = TRIGGER_KEY,
-        exit_key: Key = EXIT_KEY,
-        cooldown_s: float = DEFAULT_COOLDOWN_SECONDS,
-    ):
-        self.trigger_key = trigger_key
-        self.exit_key = exit_key
-        self.cooldown_s = cooldown_s
-        self._cool_until = 0.0
-        self._lock = threading.Lock()
+        samplerate: Optional[int] = None,
+        channels: int = 1,
+        dtype: str = "int16",
+        blocksize: int = 0,
+        latency: str | float | None = None,
+    ) -> None:
+        self.input_device_index = self.DEFAULT_INPUT_INDEX
+        self.output_device_index = self.DEFAULT_OUTPUT_INDEX
+        self.samplerate = int(samplerate or self.DEFAULT_SAMPLERATE)
+        self.channels = int(channels)
+        self.dtype = dtype
+        self.blocksize = int(blocksize)
+        self.latency = latency
 
-    def _set_cooldown(self):
-        if self.cooldown_s > 0:
-            with self._lock:
-                self._cool_until = time.monotonic() + self.cooldown_s
+    def record_seconds(self, seconds: float, *, channels: Optional[int] = None) -> bytes:
+        ch = int(channels or self.channels)
+        frames = int(self.samplerate * float(seconds))
+        audio = sd.rec(
+            frames,
+            samplerate=self.samplerate,
+            channels=ch,
+            dtype=self.dtype,
+            device=self.input_device_index,
+        )
+        sd.wait()
+        arr = np.asarray(audio, dtype=np.int16, order="C")
+        return self._to_wav(arr, self.samplerate, ch)
 
-    def _in_cooldown(self) -> bool:
-        with self._lock:
-            return time.monotonic() < self._cool_until
+    def record_until(
+        self,
+        stop_event: threading.Event,
+        *,
+        channels: Optional[int] = None,
+        poll_ms: int = 20,
+        timeout: Optional[float] = None,
+    ) -> bytes:
+        ch = int(channels or self.channels)
+        frames: list[np.ndarray] = []
 
-    def wait_tap(self) -> bool:
-        """
-        Waits for a specific key tap or exit key press using a keyboard listener.
+        def cb(indata, frames_count, time_info, status):
+            if status:
+                print(status)
+            frames.append(indata.copy())
 
-        The method listens for keyboard events and blocks until either the trigger key is pressed and released,
-        or the exit key is pressed. If the exit key is pressed, the method returns False. Otherwise, it returns True
-        after the trigger key is tapped.
+        with sd.InputStream(
+            samplerate=self.samplerate,
+            channels=ch,
+            dtype=self.dtype,
+            device=self.input_device_index,
+            blocksize=self.blocksize or 0,
+            latency=self.latency,
+            callback=cb,
+        ):
+            step = poll_ms / 1000.0
+            elapsed = 0.0
+            while not stop_event.wait(step):
+                if timeout is not None:
+                    elapsed += step
+                    if elapsed >= timeout:
+                        break
 
-        Returns:
-            bool: True if the trigger key was tapped, False if the exit key was pressed.
-        """
-        pressed = threading.Event()
-        exited = threading.Event()
+        audio = np.concatenate(frames, axis=0) if frames else np.zeros((0, ch), np.int16)
+        if audio.dtype != np.int16:
+            audio = audio.astype(np.int16, copy=False)
+        return self._to_wav(audio, self.samplerate, ch)
 
-        def on_press(key):
-            if key == self.exit_key:
-                exited.set()
-                return False
-            if key == self.trigger_key and not pressed.is_set():
-                self._set_cooldown()
-                pressed.set()
+    def stream_pcm16(
+        self,
+        stop_event: threading.Event,
+        *,
+        chunk_ms: int = 30,
+        channels: Optional[int] = None,
+    ) -> Generator[bytes, None, None]:
 
-        def on_release(key):
-            if key == self.trigger_key and pressed.is_set():
-                return False
+        ch = int(channels or self.channels)
+        q: "queue.Queue[bytes]" = queue.Queue(maxsize=10)
+        blocksize = max(1, int(self.samplerate * (chunk_ms / 1000.0)))
 
-        with keyboard.Listener(
-            on_press=on_press, on_release=on_release
-        ) as L:  # pyright: ignore[reportArgumentType]
-            L.join()
+        def cb(indata, frames_count, time_info, status):
+            if status:
+                print(status)
+            try:
+                q.put_nowait(indata.tobytes())
+            except queue.Full:
+                print("queue full")
 
-        return not exited.is_set()
+        stream = sd.InputStream(
+            samplerate=self.samplerate,
+            channels=ch,
+            dtype="int16",
+            device=self.input_device_index,
+            blocksize=blocksize,
+            latency=self.latency,
+            callback=cb,
+        )
+        stream.start()
+        try:
+            while not stop_event.is_set():
+                try:
+                    yield q.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+        finally:
+            stream.stop()
+            stream.close()
+            while True:
+                try:
+                    q.get_nowait()
+                except Exception:
+                    break
 
-    def stop_on_next_press(
-        self, stop_event: threading.Event, shutdown: threading.Event
-    ) -> threading.Thread:
-        """
-        Starts a background thread that listens for keyboard events and sets the provided events based on key presses.
+    def play_pcm16(
+        self,
+        pcm_bytes: bytes,
+        *,
+        samplerate: Optional[int] = None,
+        channels: Optional[int] = None,
+        stop_event: threading.Event | None = None,
+        blocking: bool = True,
+    ) -> None:
+        if not pcm_bytes:
+            return
+        sr = int(samplerate or self.samplerate)
+        ch = int(channels or self.channels)
 
-        When the `trigger_key` is pressed and not in cooldown, sets the `stop_event`.
-        When the `exit_key` is pressed, sets the `shutdown` event and stops the listener.
-        Ignores other keys and enforces a cooldown period between trigger key presses.
+        arr = np.frombuffer(pcm_bytes, dtype=np.int16)
+        arr = arr.reshape((-1, ch)) if ch > 1 else arr.reshape((-1, 1))
 
-        Args:
-            stop_event (threading.Event): Event to set when the trigger key is pressed.
-            shutdown (threading.Event): Event to set when the exit key is pressed.
+        if stop_event is None:
+            sd.play(arr, samplerate=sr, device=self.output_device_index, blocking=blocking)
+            return
 
-        Returns:
-            threading.Thread: The thread running the keyboard listener.
-        """
+        finished = threading.Event()
 
-        def on_press(key):
-            if key == self.exit_key:
-                shutdown.set()
-                return False
-            if key != self.trigger_key:
-                return
-            if self._in_cooldown():
-                return
+        def _waiter():
+            try:
+                sd.play(arr, samplerate=sr, device=self.output_device_index, blocking=True)
+            finally:
+                finished.set()
 
-            stop_event.set()
-            self._set_cooldown()
-            return False
-
-        t = threading.Thread(
-            target=lambda: keyboard.Listener(on_press=on_press).run(), daemon=True
-        )  # pyright: ignore[reportArgumentType]
+        t = threading.Thread(target=_waiter, daemon=True)
         t.start()
-        return t
+
+        while not finished.is_set():
+            if stop_event.is_set():
+                sd.stop()  # simple abort
+                break
+            sd.sleep(20)
+        t.join(timeout=1.0)
+
+    def play_wav(
+        self,
+        wav_bytes: bytes,
+        *,
+        stop_event: threading.Event | None = None,
+        blocking: bool = True,
+    ) -> None:
+        if not wav_bytes:
+            return
+        ch, sr, sw, raw = self._from_wav(wav_bytes)
+        if sw != 2:
+            raise ValueError("play_wav expects 16-bit PCM WAV")
+        arr = np.frombuffer(raw, dtype=np.int16)
+        arr = arr.reshape((-1, ch)) if ch > 1 else arr.reshape((-1, 1))
+        self.play_pcm16(
+            arr.tobytes(), samplerate=sr, channels=ch, stop_event=stop_event, blocking=blocking
+        )
+
+    @staticmethod
+    def _to_wav(arr_int16: np.ndarray, sr: int, ch: int) -> bytes:
+        bio = BytesIO()
+        with wave.open(bio, "wb") as wf:
+            wf.setnchannels(ch)
+            wf.setsampwidth(2)
+            wf.setframerate(sr)
+            wf.writeframes(arr_int16.tobytes())
+        return bio.getvalue()
+
+    @staticmethod
+    def _from_wav(wav_bytes: bytes) -> tuple[int, int, int, bytes]:
+        with wave.open(BytesIO(wav_bytes), "rb") as wf:
+            ch = wf.getnchannels()
+            sr = wf.getframerate()
+            sw = wf.getsampwidth()
+            n = wf.getnframes()
+            raw = wf.readframes(n)
+        return ch, sr, sw, raw
