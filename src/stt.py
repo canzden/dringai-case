@@ -19,6 +19,13 @@ class STTProvider(ABC):
 
 
 class DeepgramSTT(STTProvider):
+    """
+    DeepgramSTT is an extension of the STTProvider for transcribing audio using the Deepgram API.
+
+    Attributes:
+        DEFAULT_TIMEOUT_SECONDS (int): Default timeout for API requests in seconds.
+    """
+
     DEFAULT_TIMEOUT_SECONDS = 30
 
     def __init__(self):
@@ -38,6 +45,20 @@ class DeepgramSTT(STTProvider):
         model: Optional[str] = None,
         language: Optional[str] = None,
     ) -> str:
+        """
+        Transcribes speech from WAV audio bytes using a remote STT (Speech-to-Text) service.
+
+        Args:
+            wav_bytes (bytes): The WAV audio data to be transcribed.
+            model (Optional[str], optional): The speech recognition model to use. Defaults to the configured model.
+            language (Optional[str], optional): The language of the audio. Defaults to the configured language.
+
+        Returns:
+            str: The transcribed text from the audio, or an empty string if no audio is provided.
+
+        Raises:
+            requests.HTTPError: If the HTTP request to the STT service fails.
+        """
         ENDPOINT = "/listen"
 
         if not wav_bytes:
