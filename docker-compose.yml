@@ -1,0 +1,28 @@
+
+services:
+  dringai-case:
+    build: .
+    env_file:
+      - .env
+
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PULSE_SERVER: "unix:/tmp/pulse/native"
+
+    volumes:
+      - ./data/logs:/app/data/logs
+
+      # keyborad interface socket mounting
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+
+      # audio interfacea mounting
+      - /dev/snd:/dev/snd
+
+    devices:
+      - "/dev/snd:/dev/snd"
+
+    group_add:
+      - "audio"
+
+    stdin_open: true
+    tty: true
