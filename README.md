@@ -1,13 +1,13 @@
 # dringai-case
 
-This repo contains simple real time voice assistant controlled by SPACE/ESC and designed for conversational interactions which are ideal for customer service and support.
+This repo contains a simple real time voice assistant controlled with SPACE/ESC keys and designed for conversational interactions which are ideal for customer service and support.
 
 ## What could be done better?
-- Latency is huge, the data should flow through the streams reduce latency
+- Latency is huge, the data should flow through the streams to reduce latency
 - More robust error handling, maybe custom exceptions
 - Smarter assistant/llm logic
----
 
+---
 
 ## Installation & Usage
 I'm not gonna include installation & usage with Docker, because I was unable to test it since I'm not on Linux and do not really had the time to create a VM. The image is building though.
@@ -16,7 +16,7 @@ I'm not gonna include installation & usage with Docker, because I was unable to 
 git clone https://github.com/canzden/dringai-case.git
 cd dringai-case
 
-# create and activate vent
+# create and activate venv
 python -m venv .venv
 source .venv/bin/activate
 
@@ -25,7 +25,7 @@ pip install pip-tools
 pip-compile -o requirements.txt requirements.in
 
 # install deps
-pip install requirements.txt
+pip install -r requirements.txt
 
 # copy .env file and fill api keys
 cp .env.example .env
