@@ -1,6 +1,6 @@
 # dringai-case
 
-This repo contains simple real time voice assistant designed for hands-free, conversational interactions which are ideal for customer service and support.
+This repo contains simple real time voice assistant controlled by SPACE/ESC and designed for conversational interactions which are ideal for customer service and support.
 
 ## What could be done better?
 - Latency is huge, the data should flow through the streams reduce latency
@@ -10,7 +10,7 @@ This repo contains simple real time voice assistant designed for hands-free, con
 
 
 ## Installation & Usage
-I'm not gonna include installation & usage with Docker, because I was unable to test it since I'm not on Linux and do not really have time to create a VM. The image is building though.
+I'm not gonna include installation & usage with Docker, because I was unable to test it since I'm not on Linux and do not really had the time to create a VM. The image is building though.
 
 ```bash
 git clone https://github.com/canzden/dringai-case.git
