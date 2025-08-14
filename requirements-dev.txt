@@ -43,8 +43,6 @@ click==8.2.1
     # via
     #   black
     #   pip-tools
-coverage[toml]==7.10.3
-    # via pytest-cov
 dataclasses-json==0.6.7
     # via deepgram-sdk
 deepgram-sdk==4.8.1
@@ -82,8 +80,6 @@ idna==3.10
     #   httpx
     #   requests
     #   yarl
-iniconfig==2.1.0
-    # via pytest
 isort==6.0.1
     # via
     #   -r requirements-dev.in
@@ -114,7 +110,6 @@ packaging==25.0
     #   build
     #   deprecation
     #   marshmallow
-    #   pytest
 pathspec==0.12.1
     # via black
 pip-tools==7.5.0
@@ -124,10 +119,6 @@ platformdirs==4.3.8
     #   black
     #   pylint
     #   virtualenv
-pluggy==1.6.0
-    # via
-    #   pytest
-    #   pytest-cov
 pre-commit==4.3.0
     # via -r requirements-dev.in
 propcache==0.3.2
@@ -144,8 +135,6 @@ pydantic-core==2.33.2
     # via
     #   elevenlabs
     #   pydantic
-pygments==2.19.2
-    # via pytest
 pylint==3.3.8
     # via -r requirements-dev.in
 pynput==1.8.1
@@ -174,12 +163,6 @@ pyproject-hooks==1.2.0
     # via
     #   build
     #   pip-tools
-pytest==8.4.1
-    # via
-    #   -r requirements-test.in
-    #   pytest-cov
-pytest-cov==6.2.1
-    # via -r requirements-test.in
 python-dotenv==1.1.1
     # via -r requirements.in
 pyyaml==6.0.2

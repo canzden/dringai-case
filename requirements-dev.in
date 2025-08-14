@@ -1,4 +1,4 @@
--r requirements-test.in
+-r requirements.in
 black
 isort
 pylint
