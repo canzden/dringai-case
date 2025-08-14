@@ -1,7 +1,6 @@
 from io import BytesIO
-import queue
 import threading
-from typing import Generator, Optional
+from typing import Optional
 import wave
 
 import numpy as np
@@ -50,20 +49,6 @@ class AudioManager:
         self.blocksize = int(blocksize)
         self.latency = latency
 
-    def record_seconds(self, seconds: float, *, channels: Optional[int] = None) -> bytes:
-        ch = int(channels or self.channels)
-        frames = int(self.samplerate * float(seconds))
-        audio = sd.rec(
-            frames,
-            samplerate=self.samplerate,
-            channels=ch,
-            dtype=self.dtype,
-            device=self.input_device_index,
-        )
-        sd.wait()
-        arr = np.asarray(audio, dtype=np.int16, order="C")
-        return self._to_wav(arr, self.samplerate, ch)
-
     def record_until(
         self,
         stop_event: threading.Event,
@@ -101,51 +86,6 @@ class AudioManager:
         if audio.dtype != np.int16:
             audio = audio.astype(np.int16, copy=False)
         return self._to_wav(audio, self.samplerate, ch)
-
-    def stream_pcm16(
-        self,
-        stop_event: threading.Event,
-        *,
-        chunk_ms: int = 30,
-        channels: Optional[int] = None,
-    ) -> Generator[bytes, None, None]:
-
-        ch = int(channels or self.channels)
-        q: "queue.Queue[bytes]" = queue.Queue(maxsize=10)
-        blocksize = max(1, int(self.samplerate * (chunk_ms / 1000.0)))
-
-        def cb(indata, frames_count, time_info, status):
-            if status:
-                print(status)
-            try:
-                q.put_nowait(indata.tobytes())
-            except queue.Full:
-                print("queue full")
-
-        stream = sd.InputStream(
-            samplerate=self.samplerate,
-            channels=ch,
-            dtype="int16",
-            device=self.input_device_index,
-            blocksize=blocksize,
-            latency=self.latency,
-            callback=cb,
-        )
-        stream.start()
-        try:
-            while not stop_event.is_set():
-                try:
-                    yield q.get(timeout=0.1)
-                except queue.Empty:
-                    continue
-        finally:
-            stream.stop()
-            stream.close()
-            while True:
-                try:
-                    q.get_nowait()
-                except Exception:
-                    break
 
     def play_pcm16(
         self,
