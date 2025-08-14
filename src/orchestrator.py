@@ -6,7 +6,10 @@ from pynput.keyboard import Key
 
 from audio import AudioManager
 from config import load_config
+from llm import OpenAIClient
+from logger import VoiceAssistantLogger
 from stt import DeepgramSTT
+from tts import ElevenLabsTTS
 
 
 class HotkeyTap:
@@ -14,7 +17,7 @@ class HotkeyTap:
     HotkeyTap provides hotkey-based tap detection with cooldown and exit functionality.
     """
 
-    DEFAULT_COOLDOWN_SECONDS: float = 1.5
+    DEFAULT_COOLDOWN_SECONDS: float = 0.8
     TRIGGER_KEY: Key = Key.space
     EXIT_KEY: Key = Key.esc
 
@@ -112,50 +115,101 @@ class HotkeyTap:
         return t
 
 
-def run():
-    keys = HotkeyTap(cooldown_s=0.8)
+class VoiceAgent:
+    def __init__(
+        self,
+        *,
+        audio: AudioManager,
+        stt: DeepgramSTT,
+        llm: OpenAIClient,
+        tts: ElevenLabsTTS,
+        keys: HotkeyTap,
+        logger: VoiceAssistantLogger,
+    ) -> None:
+        self.audio = audio
+        self.stt = stt
+        self.llm = llm
+        self.tts = tts
+        self.keys = keys
+        self.logger = logger
+        self.shutdown = threading.Event()
+
+    def run(self) -> None:
+        print("Press SPACE to start (ESC to exit).")
+        if not self.keys.wait_tap():
+            print("Early exit.")
+            return
+
+        turn = 1
+        try:
+            while not self.shutdown.is_set():
+
+                # record user voice
+                print(f"\n[{turn}] Recording… (SPACE to stop, ESC to exit)")
+                stop_rec = threading.Event()
+                rec_listener = self.keys.stop_on_next_press(stop_rec, self.shutdown)
+                wav = self.audio.record_until(stop_rec, channels=1, timeout=10_000.0)
+                rec_listener.join(timeout=0.5)
+                if self.shutdown.is_set():
+                    break
+
+                # speech to text
+                try:
+                    user_text = self.stt.transcribe_wav(wav)
+                except Exception as e:
+                    print(f"[STT error] {e}")
+                    continue
+                print(f"[user] {user_text!r}")
+                if not user_text.strip():
+                    continue
+
+                # llm
+                try:
+                    reply = self.llm.reply_short(user_text)
+                except Exception as e:
+                    print(f"[LLM error] {e}")
+                    continue
+                print(f"[assistant] {reply!r}")
+                if not reply.strip():
+                    continue
+
+                # tts
+                print("Speaking… (SPACE to abort, ESC to exit)")
+                stop_play = threading.Event()
+                play_listener = self.keys.stop_on_next_press(stop_play, self.shutdown)
+
+                try:
+                    pcm = self.tts.generate_speech(reply)  # bytes (PCM16 @ 16kHz)
+                    wav_bytes = AudioManager.pcm16_to_wav(pcm, 16_000)
+                except Exception as e:
+                    print(f"[TTS error] {e}")
+                    play_listener.join(timeout=0.5)
+                    continue
+
+                self.audio.play_wav(wav_bytes, stop_event=stop_play, blocking=True)
+                play_listener.join(timeout=0.5)
+                if self.shutdown.is_set():
+                    break
+
+                self.logger.log(turn_id=turn, user_text=user_text, assistant_text=reply)
+                turn += 1
+
+        except KeyboardInterrupt:
+            pass
+        finally:
+            print("\nGraceful shutdown.")
+
+
+def build_agent() -> VoiceAgent:
+    stt_cfg, openai_cfg, eleven_cfg = load_config()
     audio = AudioManager(channels=1)
-
-    stt_config, llm_config = load_config()
-    tts = DeepgramSTT(stt_config)
-    shutdown = threading.Event()
-
-    print("press SPACE to init conversation")
-    if not keys.wait_tap():
-        print("early exit")
-        return
-
-    counter = 1
-    try:
-        while not shutdown.is_set():
-            print(f"\n[{counter}] Recording… (SPACE to stop, ESC to exit)")
-            stop_rec = threading.Event()
-            rec_listener = keys.stop_on_next_press(stop_rec, shutdown)
-
-            wav = audio.record_until(stop_rec, channels=1)
-            rec_listener.join(timeout=1.0)
-            if shutdown.is_set():
-                break
-
-            print(f"[{counter}] Playing… (SPACE to abort, ESC to exit)")
-            # stop_play = threading.Event()
-            # play_listener = keys.stop_on_next_press(stop_play, shutdown)
-
-            # audio.play_wav(wav, stop_event=stop_play, blocking=True)
-
-            # play_listener.join(timeout=1.0)
-            print(tts.transcribe_wav(wav))
-
-            if shutdown.is_set():
-                break
-
-            counter += 1
-    except KeyboardInterrupt:
-        pass
-    finally:
-        # TODO: destroy idle resources, sockets, io interfaces here
-        print("gracefully shutdown")
+    stt = DeepgramSTT(stt_cfg)
+    llm = OpenAIClient(openai_cfg)
+    tts = ElevenLabsTTS(eleven_cfg)
+    keys = HotkeyTap()
+    logger = VoiceAssistantLogger()
+    return VoiceAgent(audio=audio, stt=stt, llm=llm, tts=tts, keys=keys, logger=logger)
 
 
 if __name__ == "__main__":
-    run()
+    build_agent().run()

@@ -21,13 +21,13 @@ class ElevenLabsTTS(TTSProvider):
         self.client = ElevenLabs(api_key=self.config.api_key)
 
     @property
-    def voice_settings() -> VoiceSettings:
+    def voice_settings(self) -> VoiceSettings:
         return VoiceSettings(
-            stability=0.2,
+            stability=0.0,
             similarity_boost=1.0,
-            style=0.2,
+            style=0.0,
             use_speaker_boost=True,
-            speed=1.4,
+            speed=1.1,
         )
 
     def generate_speech(self, speech_text: str) -> bytes:
